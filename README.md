@@ -25,4 +25,4 @@ To verify the engine's statistical accuracy, clinical baseline triggers, and evi
 
 Run the tests using pytest:
 ```bash
-pytest tests/test_analyzer.py -v
+python -m pytest tests/test_analyzer.py -v
