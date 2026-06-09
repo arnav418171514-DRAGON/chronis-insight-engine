@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from src.baselines import CLINICAL_BASELINES  # Importing our medical thresholds
+from scipy.stats import linregress
 
 class BehavioralInsightEngine:
     def __init__(self, data_path: str):
@@ -101,3 +102,58 @@ class BehavioralInsightEngine:
                 })
                 
         return anomalies
+    
+    def discover_patterns(self, user_id: str, metric: str, window: int = 14, p_value_threshold: float = 0.05):
+        """
+        Component 1: Pattern Discovery.
+        Uses Ordinary Least Squares (OLS) linear regression to identify 
+        statistically significant long-term trends in behavior.
+        """
+        user_data = self.get_user_data(user_id)
+        if user_data is None:
+            return None  # Abstention gate triggered
+            
+        # We only want to look at the most recent 'window' of days
+        recent_data = user_data.tail(window).copy()
+        
+        # We need at least 7 days to calculate a meaningful trend
+        if len(recent_data) < 7:
+             return None 
+             
+        # Create a numerical X-axis (days 0, 1, 2, 3...) for the regression
+        x = np.arange(len(recent_data))
+        y = recent_data[metric].values
+        
+        # Calculate the linear regression
+        slope, intercept, r_value, p_value, std_err = linregress(x, y)
+        
+        # If the p-value is > 0.05, the trend is likely just random noise. We ignore it.
+        if p_value > p_value_threshold:
+            return None
+            
+        # Determine the direction of the trend
+        direction = "increasing" if slope > 0 else "decreasing"
+        
+        # Calculate absolute change from the start of the window to the end
+        start_val = intercept # The modeled starting point
+        end_val = intercept + (slope * len(recent_data))
+        
+        # Calculate our Data Completeness for the Confidence Score (Component 3)
+        expected_days = window
+        actual_days = len(recent_data.dropna(subset=[metric]))
+        completeness_ratio = actual_days / expected_days
+        
+        # Base confidence on statistical significance (1 - p_value), penalized by missing data
+        confidence = (1.0 - p_value) * completeness_ratio
+        
+        pattern = {
+            "metric": metric,
+            "trend": direction,
+            "slope": slope,
+            "p_value": p_value,
+            "confidence": round(confidence, 2),
+            "evidence": f"Over the last {window} days, {metric} showed a statistically significant {direction} trend (p={p_value:.3f}), shifting from ~{start_val:.1f} to ~{end_val:.1f}."
+        }
+        
+        return pattern
+    
