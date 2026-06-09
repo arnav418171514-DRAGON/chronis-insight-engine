@@ -1,5 +1,4 @@
 from src.analyzer import BehavioralInsightEngine
-import json
 
 def run_test():
     print("Initializing Chronis Behavioral Insight Engine...\n")
@@ -8,9 +7,24 @@ def run_test():
     users = ["U1", "U2", "U3", "U4", "U5"]
     
     for user in users:
-        print(f"--- Generating Insights for {user} ---")
+        print(f"--- Behavioral Report: {user} ---")
         insights = engine.generate_insights(user)
-        print(json.dumps(insights, indent=4))
+        
+        for item in insights:
+            print(f"Insight: {item.get('insight', 'No insight generated.')}")
+            
+            # Only print confidence if it's a trend or anomaly (abstentions don't have confidence)
+            if "confidence" in item:
+                print(f"Confidence: {item.get('confidence')}")
+                
+            # Handle both 'evidence' and 'reason' keys depending on the insight type
+            if "evidence" in item:
+                print(f"Evidence: {item.get('evidence')}")
+            elif "reason" in item:
+                print(f"Evidence: {item.get('reason')}")
+                
+            print("-" * 20) # A small divider between multiple insights for one user
+            
         print("\n" + "="*50 + "\n")
 
 if __name__ == "__main__":
