@@ -18,3 +18,11 @@ An end-to-end data pipeline designed to parse daily behavioral logs, detect stat
    ```bash
    python main.py
 4. The generated insights will output directly to the terminal, detailing the behavior status, confidence scores, and mathematical reasoning for all users.
+
+## Running the Tests
+
+To verify the engine's statistical accuracy, clinical baseline triggers, and evidence sufficiency gates, a complete test suite is provided.
+
+Run the tests using pytest:
+```bash
+pytest tests/test_analyzer.py -v
