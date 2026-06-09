@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from src.baselines import CLINICAL_BASELINES  # Importing our medical thresholds
 
 class BehavioralInsightEngine:
     def __init__(self, data_path: str):
@@ -44,3 +45,59 @@ class BehavioralInsightEngine:
             return None
             
         return self.df[self.df['user_id'] == user_id]
+
+    def detect_anomalies(self, user_id: str, metric: str, window: int = 7, z_threshold: float = 2.0):
+        """
+        Component 2: Anomaly Detection.
+        Uses a rolling Z-score to find statistically significant deviations,
+        then cross-references with clinical baselines.
+        """
+        user_data = self.get_user_data(user_id)
+        if user_data is None:
+            return None  # Abstention gate triggered
+
+        # Create a copy to do our math on
+        df_metric = user_data[['date', metric]].copy()
+        
+        # Calculate rolling mean and standard deviation for the past 'window' days
+        df_metric['rolling_mean'] = df_metric[metric].rolling(window=window, min_periods=window).mean().shift(1)
+        df_metric['rolling_std'] = df_metric[metric].rolling(window=window, min_periods=window).std().shift(1)
+        
+        # Calculate Z-score. We use np.where to prevent division by zero errors if standard deviation is 0.
+        df_metric['z_score'] = np.where(
+            df_metric['rolling_std'] > 0,
+            (df_metric[metric] - df_metric['rolling_mean']) / df_metric['rolling_std'],
+            0
+        )
+
+        anomalies = []
+        
+        # Iterate through the data to find days where the Z-score exceeds our threshold
+        for index, row in df_metric.dropna().iterrows():
+            if abs(row['z_score']) > z_threshold:
+                val = row[metric]
+                date_str = row['date'].strftime('%Y-%m-%d')
+                
+                # Check against our clinical baselines
+                baseline_info = CLINICAL_BASELINES.get(metric, {})
+                min_thresh = baseline_info.get('min_threshold')
+                max_thresh = baseline_info.get('max_threshold')
+                
+                reason = f"Statistically unusual event (Z={row['z_score']:.2f}). "
+                
+                # Add clinical context to the explanation
+                if min_thresh and val < min_thresh and row['z_score'] < 0:
+                    reason += f"Value ({val}) dropped dangerously below the clinical minimum of {min_thresh}."
+                elif max_thresh and val > max_thresh and row['z_score'] > 0:
+                    reason += f"Value ({val}) exceeded the clinical maximum of {max_thresh}."
+                else:
+                    reason += f"Value was {val}, compared to the user's recent rolling average of {row['rolling_mean']:.2f}."
+
+                anomalies.append({
+                    "date": date_str,
+                    "metric": metric,
+                    "value": val,
+                    "reason": reason
+                })
+                
+        return anomalies
