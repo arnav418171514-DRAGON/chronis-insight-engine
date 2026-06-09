@@ -157,3 +157,57 @@ class BehavioralInsightEngine:
         
         return pattern
     
+    def generate_insights(self, user_id: str):
+        """
+        Component 3: Insight Generation.
+        Aggregates patterns and anomalies into human-readable insights 
+        with confidence scores and supporting evidence.
+        """
+        insights = []
+        core_metrics = ['steps', 'sleep_hours', 'screen_time_hours', 'deep_work_hours', 'exercise_minutes']
+        
+        # Component 4: Check if we should even proceed
+        gate = self.check_evidence_sufficiency(user_id)
+        if not gate["sufficient"]:
+            return [{"type": "abstention", "insight": "Insufficient data to generate insights.", "reason": gate["reason"]}]
+
+        # 1. Gather Long-Term Trends
+        for metric in core_metrics:
+            pattern = self.discover_patterns(user_id, metric)
+            if pattern:
+                insights.append({
+                    "type": "trend",
+                    "insight": f"{metric.replace('_', ' ').capitalize()} has been {pattern['trend']} over the past 14 days.",
+                    "confidence": pattern["confidence"],
+                    "evidence": pattern["evidence"]
+                })
+                
+        # 2. Gather Recent Anomalies (Let's focus on the last 3 days for actionable insights)
+        for metric in core_metrics:
+            anomalies = self.detect_anomalies(user_id, metric)
+            if anomalies:
+                # Filter for only recent anomalies to keep insights relevant
+                max_date = self.df['date'].max()
+                recent_anomalies = [a for a in anomalies if pd.to_datetime(a['date']) >= (max_date - pd.Timedelta(days=3))]
+                
+                for anomaly in recent_anomalies:
+                    # Derive a confidence score from the Z-score (e.g., higher Z = higher confidence)
+                    try:
+                        raw_z = float(anomaly['reason'].split('Z=')[1].split(')')[0])
+                    except (IndexError, ValueError):
+                        raw_z = 2.0
+                        
+                    confidence = min(0.60 + (abs(raw_z) * 0.10), 0.99)
+                    
+                    insights.append({
+                        "type": "anomaly",
+                        "insight": f"Unusual activity detected in {metric.replace('_', ' ')} on {anomaly['date']}.",
+                        "confidence": round(confidence, 2),
+                        "evidence": anomaly['reason']
+                    })
+                    
+        # If no insights were found, provide a graceful fallback
+        if not insights:
+            return [{"type": "status", "insight": "Behavior is stable.", "evidence": "No significant trends or recent anomalies detected."}]
+            
+        return insights
